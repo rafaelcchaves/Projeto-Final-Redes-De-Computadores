@@ -1,23 +1,21 @@
-FROM alpine:latest
+FROM ubuntu:22.04
 
-RUN apk update && apk add --no-cache \
+RUN apt update && apt install -y \
     python3 \
-    py3-pip \
+    python3-pip \
     tcpdump \
+    iputils-ping \ 
+    iproute2 \
     iperf \
-    iperf3
+    iperf3 \
+    traceroute
     
-RUN python3 -m venv /venv
-RUN /venv/bin/pip install scapy
-RUN /venv/bin/pip install influxdb
-
-
-ENV PATH="/venv/bin:$PATH"
+RUN pip install scapy
+RUN pip install influxdb
 
 WORKDIR /app
 
 RUN mkdir -p /app/data
 
-COPY receiver-socket.py /app/receiver-socket.py
-COPY sender-socket.py /app/sender-socket.py
-COPY receiver.py /app/receiver.py
+COPY scripts/receiver-socket.py /app/receiver-socket.py
+COPY scripts/sender-socket.py /app/sender-socket.py

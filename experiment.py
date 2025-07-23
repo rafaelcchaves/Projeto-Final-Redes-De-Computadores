@@ -102,12 +102,12 @@ def run():
     r4.cmd('ip route add 172.19.0.0/24 via 192.168.104.2')
     net.start()
     try:
-        print("Inicializando Containers")
+        print("> Inicializando Containers")
         create_container("client1", "client01")
         create_container("client2", "client02")
         create_container("server1", "server01")
         time.sleep(1)
-        print("Criando rotas")
+        print("> Criando rotas")
         exec_cmd("client1", 'ip route add 192.168.102.0/24 via 172.18.0.3', verbose=True).wait()
         exec_cmd("client1", 'ip route add 192.168.104.0/24 via 172.18.0.3', verbose=True).wait()
         exec_cmd("client1", 'ip route add 172.19.0.0/24 via 172.18.0.3', verbose=True).wait()
@@ -120,11 +120,13 @@ def run():
         exec_cmd("server1", 'ip route add 192.168.102.0/24 via 172.20.0.3', verbose=True).wait()
         exec_cmd("server1", 'ip route add 172.18.0.0/24 via 172.20.0.3', verbose=True).wait()
         exec_cmd("server1", 'ip route add 172.19.0.0/24 via 172.20.0.3', verbose=True).wait()
-
+        print("> Testando topologia")
+        exec_cmd("client1", "traceroute 172.20.0.2", verbose=True).wait()
+        exec_cmd("client2", "traceroute 172.20.0.2", verbose=True).wait()
     except Exception as err:
         print(err)
     finally:
-        print("Finalizando Containers")
+        print("> Finalizando Containers")
         kill("client1")
         kill("client2")
         kill("server1")
