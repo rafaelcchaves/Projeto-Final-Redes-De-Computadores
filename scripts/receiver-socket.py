@@ -10,31 +10,37 @@ BUFFER_SIZE = 1024
 MOVING_WINDOW_SIZE = 10
 latencies = deque(maxlen=MOVING_WINDOW_SIZE)
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 10485760)
 server.bind((IP, PORT))
 server.listen(1)
+
 
 print("[*] Aguardando conexão TCP na porta {PORT}...")
 sys.stdout.flush()
 conn, addr = server.accept()
 print(f"[+] Conectado por {addr}")
+sys.stdout.flush()
+
+buffer = ""
 
 while True:
     try:
         sys.stdout.flush()
-        data = conn.recv(1300)
+        data = conn.recv(1400)
         if not data:
             break
-        raw = data.decode()
-        init = raw.find('|')
-        end = raw.find('|', init + 1)
-        message = raw[init+1:end]
+        buffer += data.decode()
+        init = buffer.find('|')
+        end = buffer.find('|', init + 1)
+        if init == -1 or end == -1:
+            continue
+        message = buffer[init+1:end]
+        buffer = buffer[end+1:]
         sent_time, seq = message.split(',')
         sent_time = float(sent_time)
         now = time.time()
         latency_ms = (now - sent_time) * 1000
         latencies.append(latency_ms)
-        if len(latencies) > 10:
-            latencies.pop(0)
         avg = sum(latencies) / len(latencies)
         print(f"[{addr[0]}] Seq: {seq} | Latência: {latency_ms:.2f} ms | Média móvel ({len(latencies)}): {avg:.2f} ms")
         sys.stdout.flush()
