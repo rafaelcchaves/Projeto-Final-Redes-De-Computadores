@@ -5,10 +5,13 @@ from mininet.log import setLogLevel, info
 from mininet.cli import CLI
 from mininet.link import Intf
 from mininet.link import TCLink, TCIntf
+import sys
+import threading
 import subprocess
 import time
 import argparse
 import random
+import signal
 
 BANDWIDTH=10 # Mbps
 
@@ -34,7 +37,7 @@ def exec_cmd(name, cmd, output = None, i = True, verbose=False):
         return subprocess.Popen(params, stdout = output, stderr = subprocess.STDOUT)
     if verbose:
         return subprocess.Popen(params) 
-    return subprocess.Popen(params, stdout = subprocess.PIPE, stderr = subprocess.PIPE) 
+    return subprocess.Popen(params, stdout = subprocess.PIPE, stderr = subprocess.PIPE, text=True) 
 
 def kill(name):
     params = ["docker", "rm", "-f", name]
@@ -82,6 +85,41 @@ class NetworkTopo( Topo ):
                      intfName1='s3-r4',
                      intfName2='r4-s3', params2={'ip': '172.20.0.3/24'},
                      )
+
+def eMBBTraffic():
+    print("> Iniciando Tráfego eMBB")
+    exec_cmd("server1", "iperf -s -i 1")
+    while True:
+        time.sleep(3)
+        if random.randint(0, 1):
+            exec_cmd(f"client2", "iperf -c 172.20.0.2 -l 12K -b 1M -t 30 -i 1 ")
+
+def uRLLCTraffic(r1, r2, r3, r4):
+    print("> Iniciando Tráfego uRLLC")
+    receiver = exec_cmd("server1", "python3 receiver-socket.py")
+    time.sleep(1)
+    exec_cmd("client1", "python3 sender-socket.py")
+    time.sleep(1)
+    while True:
+        try:
+            line = receiver.stdout.readline()
+            print(line, end='')
+            if line[0] == '-':
+               latency = float(line.split(' ')[-2])
+               if latency > 5:
+                   pass
+        except:
+            break
+
+def clean():
+    print("> Finalizando Containers")
+    kill("client1")
+    kill("client2")
+    kill("server1")
+
+def sigintHandler(sig, frame):
+    clean()
+    sys.exit(0)
 
 def run():
     topo = NetworkTopo()
@@ -140,26 +178,25 @@ def run():
         r3.cmd("tc class add dev r3-r4 parent 1: classid 1:1 htb rate 10mbit ceil 10mbit")
         r3.cmd("tc class add dev r3-r4 parent 1:1 classid 1:10 htb rate 1mbit ceil 10mbit prio 1")
         r3.cmd("tc class add dev r3-r4 parent 1:1 classid 1:20 htb rate 9mbit ceil 10mbit prio 2")
+
+        embb = threading.Thread(target = eMBBTraffic)
+        embb.daemon = True
+        urllc = threading.Thread(target = uRLLCTraffic, args = (r1, r2, r3, r4))
+        urllc.daemon = True
+
+        embb.start()
+        urllc.start()
+
+        urllc.join()
+
         #r3.cmd("tc filter add dev r3-r4 protocol ip parent 1: u32 match ip src 172.18.0.2 flowid 1:10")
-        print("> Iniciando Tráfego uRLLC")
-        exec_cmd("server1", "python3 receiver-socket.py", verbose=True)
-        time.sleep(1)
-        exec_cmd("client1", "python3 sender-socket.py")
-        time.sleep(1)
-        print("> Iniciando Tráfego eMBB")
-        exec_cmd("server1", "iperf -s -i 1")
-        while True:
-            time.sleep(3)
-            if random.randint(0, 1):
-                exec_cmd(f"client2", "iperf -c 172.20.0.2 -l 12K -b 1M -t 30 -i 1 ")
     except Exception as err:
+        print("> Encerrando execução devido ao seguinte erro: ")
         print(err)
-    finally:
-        print("> Finalizando Containers")
-        kill("client1")
-        kill("client2")
-        kill("server1")
+
+    clean()
     net.stop()
 
 if __name__ == '__main__':
+    signal.signal(signal.SIGINT, sigintHandler) 
     run()

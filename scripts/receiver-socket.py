@@ -42,7 +42,7 @@ while True:
         latency_ms = (now - sent_time) * 1000
         latencies.append(latency_ms)
         avg = sum(latencies) / len(latencies)
-        print(f"[{addr[0]}] Seq: {seq} | Latência: {latency_ms:.2f} ms | Média móvel ({len(latencies)}): {avg:.2f} ms")
+        print(f"-[{addr[0]}] Seq: {seq} | Latência: {latency_ms:.2f} ms | Média móvel ({len(latencies)}): {avg:.2f} ms")
         sys.stdout.flush()
     except Exception as e:
         print(f"[!] Erro ao processar pacote: {e}")
