@@ -4,7 +4,7 @@ import time
 DEST_IP = "172.20.0.2"
 DEST_PORT = 5005
 TOS_URRLC = 0xb8  #DSCP EF (Expedited Forwarding)
-INTERVAL = 0.1
+INTERVAL = 0.5
 count = 0
 
 #Cria socket TCP
@@ -23,7 +23,7 @@ while True:
     try:
         timestamp = str(time.time())
         seq = str(count)
-        message = '|'+timestamp + ',' + seq + '|' + (1400 - 3 - len(timestamp) - len(seq))*'X'
+        message = '|'+timestamp + ',' + seq + '|' + 1400*'X'
         sock.sendall(message.encode())
         print(f"[>] URLLC-{seq} enviado com timestamp {timestamp}")
         time.sleep(INTERVAL)

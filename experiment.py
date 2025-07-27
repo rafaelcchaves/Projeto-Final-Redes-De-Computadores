@@ -8,8 +8,9 @@ from mininet.link import TCLink, TCIntf
 import subprocess
 import time
 import argparse
+import random
 
-BANDWIDTH=100 # Mbps
+BANDWIDTH=10 # Mbps
 
 def create_container(name, network, verbose = False):
     params = ["docker", "run", "--privileged", "--network", network, "-i", "--name", name, "client", "bash"]
@@ -61,32 +62,26 @@ class NetworkTopo( Topo ):
         self.addLink(r1, r3, 
                      intfName1='r1-r3', params1={'ip': '192.168.101.1/24'},
                      intfName2='r3-r1', params2={'ip': '192.168.101.2/24'},
-                     bw=BANDWIDTH,
-                     delay=1,
-                     use_tbf=True)
+                     )
         self.addLink(r2, r3, 
                      intfName1='r2-r3', params1={'ip': '192.168.102.1/24'},
                      intfName2='r3-r2', params2={'ip': '192.168.102.2/24'},
-                     bw=BANDWIDTH,
-                     delay=1,
-                     use_tbf=True)
+                     )
         self.addLink(r3, r4, 
                      intfName1='r3-r4', params1={'ip': '192.168.104.2/24'},
                      intfName2='r4-r3', params2={'ip': '192.168.104.1/24'},
-                     bw=BANDWIDTH,
-                     delay=1,
-                     use_tbf=True)
+                     )
         self.addLink(s1, r1,
                      intfName1='s1-r1',
                      intfName2='r1-s1', params2={'ip': '172.18.0.3/24'},
-                     use_tbf=True)
+                     )
         self.addLink(s2, r2, intfName1='s2-r2',
                      intfName2='r2-s2', params2={'ip': '172.19.0.3/24'},
-                     use_tbf=True)
+                     )
         self.addLink(s3, r4,
                      intfName1='s3-r4',
                      intfName2='r4-s3', params2={'ip': '172.20.0.3/24'},
-                     use_tbf=True)
+                     )
 
 def run():
     topo = NetworkTopo()
@@ -139,17 +134,24 @@ def run():
         exec_cmd("server1", 'ip route add 192.168.102.0/24 via 172.20.0.3')
         exec_cmd("server1", 'ip route add 172.18.0.0/24 via 172.20.0.3')
         exec_cmd("server1", 'ip route add 172.19.0.0/24 via 172.20.0.3')
-        time.sleep(1)
-        print("> Inicializando Trafego de Fundo")
-        exec_cmd("server1", "iperf -s -i 1")
-        time.sleep(1)
-        exec_cmd("client2", "iperf -c 172.20.0.2 -b 10M -P 10 -t 1200 -i 1")
-        time.sleep(1)
-        print("> Executando experimentos")
+
+        print("> Criando regras de controle da rede")
+        r3.cmd("tc qdisc add dev r3-r4 root handle 1: htb default 20")
+        r3.cmd("tc class add dev r3-r4 parent 1: classid 1:1 htb rate 10mbit ceil 10mbit")
+        r3.cmd("tc class add dev r3-r4 parent 1:1 classid 1:10 htb rate 1mbit ceil 10mbit prio 1")
+        r3.cmd("tc class add dev r3-r4 parent 1:1 classid 1:20 htb rate 9mbit ceil 10mbit prio 2")
+        #r3.cmd("tc filter add dev r3-r4 protocol ip parent 1: u32 match ip src 172.18.0.2 flowid 1:10")
+        print("> Iniciando Tráfego uRLLC")
         exec_cmd("server1", "python3 receiver-socket.py", verbose=True)
+        time.sleep(1)
         exec_cmd("client1", "python3 sender-socket.py")
+        time.sleep(1)
+        print("> Iniciando Tráfego eMBB")
+        exec_cmd("server1", "iperf -s -i 1")
         while True:
-            time.sleep(1)
+            time.sleep(3)
+            if random.randint(0, 1):
+                exec_cmd(f"client2", "iperf -c 172.20.0.2 -l 12K -b 1M -t 30 -i 1 ")
     except Exception as err:
         print(err)
     finally:
