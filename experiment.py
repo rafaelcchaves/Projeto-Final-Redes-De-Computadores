@@ -14,6 +14,9 @@ import random
 import signal
 
 BANDWIDTH=10 # Mbps
+PRIO=False
+ENABLE=False
+START=0
 
 def create_container(name, network, verbose = False):
     params = ["docker", "run", "--privileged", "--network", network, "-i", "--name", name, "client", "bash"]
@@ -100,15 +103,28 @@ def uRLLCTraffic(r1, r2, r3, r4):
     time.sleep(1)
     exec_cmd("client1", "python3 sender-socket.py")
     time.sleep(1)
+    global PRIO
+    global START
     while True:
         try:
             line = receiver.stdout.readline()
             print(line, end='')
             if line[0] == '-':
-               latency = float(line.split(' ')[-2])
-               if latency > 5:
-                   pass
-        except:
+                latency = float(line.split(' ')[-2])
+                if ENABLE:
+                    if PRIO == False and latency > 5:
+                        print("> Inicializando priorização:")
+                        r3.cmd("tc filter add dev r3-r4 protocol ip parent 1: u32 match ip src 172.18.0.2 flowid 1:10")
+                        START = time.monotonic()
+                        PRIO = True
+                    '''
+                    elif PRIO == True  and time.monotonic() - START > 30:
+                        print("> Finalizando priorização:")
+                        r3.cmd("tc filter del dev r3-r4 protocol ip parent 1: u32 match ip src 172.18.0.2 flowid 1:10")
+                        PRIO = False
+                    '''
+        except Exception as err:
+            print(err)
             break
 
 def clean():
@@ -120,6 +136,11 @@ def clean():
 def sigintHandler(sig, frame):
     clean()
     sys.exit(0)
+
+def sigtermHandler(sig, frame):
+    global ENABLE
+    ENABLE = True
+    print("> Habilitando priorização:")
 
 def run():
     topo = NetworkTopo()
@@ -189,7 +210,6 @@ def run():
 
         urllc.join()
 
-        #r3.cmd("tc filter add dev r3-r4 protocol ip parent 1: u32 match ip src 172.18.0.2 flowid 1:10")
     except Exception as err:
         print("> Encerrando execução devido ao seguinte erro: ")
         print(err)
@@ -199,4 +219,5 @@ def run():
 
 if __name__ == '__main__':
     signal.signal(signal.SIGINT, sigintHandler) 
+    signal.signal(signal.SIGTERM, sigtermHandler) 
     run()
