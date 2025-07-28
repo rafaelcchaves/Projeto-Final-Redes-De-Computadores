@@ -20,6 +20,9 @@ PRIO=False
 ENABLE=False
 START=0
 CSV_FILE='/tmp/latencies.csv'
+INTFC1 = "br-1865de99a78f" 
+INTFC2 = "br-01bf21c220d0"
+INTFS1 = "br-5f04dce7f1ef"
 
 def create_container(name, network, verbose = False):
     params = ["docker", "run", "--privileged", "--network", network, "-i", "--name", name, "client", "bash"]
@@ -177,9 +180,6 @@ def run():
     s1 = net.get("s1")
     s2 = net.get("s2")
     s3 = net.get("s3")
-    INTFC1 = "br-1865de99a78f" 
-    INTFC2 = "br-01bf21c220d0"
-    INTFS1 = "br-5f04dce7f1ef"
     Intf(INTFC1, node=s1)
     Intf(INTFC2, node=s2)
     Intf(INTFS1, node=s3)
@@ -199,6 +199,8 @@ def run():
     r4.cmd('ip route add 172.18.0.0/24 via 192.168.104.2')
     r4.cmd('ip route add 172.19.0.0/24 via 192.168.104.2')
     net.start()
+
+    print(f"Iniciando processo (PID {os.getpid()})")
     try:
         print("> Inicializando Containers")
         create_container("client1", "client01")
