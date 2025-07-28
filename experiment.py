@@ -12,11 +12,14 @@ import time
 import argparse
 import random
 import signal
+import os
+import csv
 
 BANDWIDTH=10 # Mbps
 PRIO=False
 ENABLE=False
 START=0
+CSV_FILE='/tmp/latencies.csv'
 
 def create_container(name, network, verbose = False):
     params = ["docker", "run", "--privileged", "--network", network, "-i", "--name", name, "client", "bash"]
@@ -92,16 +95,34 @@ class NetworkTopo( Topo ):
 def eMBBTraffic():
     print("> Iniciando Tráfego eMBB")
     exec_cmd("server1", "iperf -s -i 1")
+    global PRIO
     while True:
         time.sleep(3)
-        if random.randint(0, 1):
+        if random.randint(0, 1) or (PRIO and time.monotonic() - START > 20):
             exec_cmd(f"client2", "iperf -c 172.20.0.2 -l 12K -b 1M -t 30 -i 1 ")
+
+
+
+def salvar_csv(latency_ms, media_movel_ms):
+    file_exists = os.path.isfile(CSV_FILE)
+    #Abre o arquivo em modo 'append' (adicionar ao final)
+    with open(CSV_FILE, mode='a', newline='') as file:
+        writer = csv.writer(file)
+        if not file_exists:
+            writer.writerow(["latency_ms", "media_movel_ms"])
+
+        writer.writerow([
+            f"{latency_ms:.2f}",
+            f"{media_movel_ms:.2f}"
+        ])
 
 def uRLLCTraffic(r1, r2, r3, r4):
     print("> Iniciando Tráfego uRLLC")
     receiver = exec_cmd("server1", "python3 receiver-socket.py")
     time.sleep(1)
     exec_cmd("client1", "python3 sender-socket.py")
+    time.sleep(1)
+    exec_cmd("server1", "python3 publish_to_influxdb.py")
     time.sleep(1)
     global PRIO
     global START
@@ -110,19 +131,15 @@ def uRLLCTraffic(r1, r2, r3, r4):
             line = receiver.stdout.readline()
             print(line, end='')
             if line[0] == '-':
-                latency = float(line.split(' ')[-2])
+                average_latency = float(line.split(' ')[-2])
+                latency = float(line.split(' ')[-8])
+                salvar_csv(latency, average_latency)
                 if ENABLE:
-                    if PRIO == False and latency > 5:
+                    if PRIO == False and average_latency > 5:
                         print("> Inicializando priorização:")
-                        r3.cmd("tc filter add dev r3-r4 protocol ip parent 1: u32 match ip src 172.18.0.2 flowid 1:10")
+                        r3.cmd("tc filter add dev r3-r4 protocol ip parent 1: u32 match u8 0xb8 0xff at 1 flowid 1:10")
                         START = time.monotonic()
                         PRIO = True
-                    '''
-                    elif PRIO == True  and time.monotonic() - START > 30:
-                        print("> Finalizando priorização:")
-                        r3.cmd("tc filter del dev r3-r4 protocol ip parent 1: u32 match ip src 172.18.0.2 flowid 1:10")
-                        PRIO = False
-                    '''
         except Exception as err:
             print(err)
             break

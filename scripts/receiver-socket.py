@@ -2,12 +2,15 @@ import socket
 import time
 import sys
 from collections import deque
+import os
+import csv
 
 
 IP = "0.0.0.0"
 PORT = 5005
 BUFFER_SIZE = 1024
 MOVING_WINDOW_SIZE = 20
+CSV_FILE = '/tmp/latencies.csv'
 latencies = deque(maxlen=MOVING_WINDOW_SIZE)
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 server.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 10485760)
@@ -22,7 +25,6 @@ print(f"[+] Conectado por {addr}")
 sys.stdout.flush()
 
 buffer = ""
-
 while True:
     try:
         sys.stdout.flush()
