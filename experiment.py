@@ -27,6 +27,23 @@ def create_container(name, network, verbose = False):
         return subprocess.Popen(params)
     return subprocess.Popen(params, stdout = subprocess.PIPE, stderr = subprocess.PIPE) 
 
+def start_publishing(verbose = False):
+    params = ["python3", "scripts/publish_to_influxdb.py"]
+    if verbose:
+        return subprocess.Popen(params)
+    return subprocess.Popen(params, stdout = subprocess.PIPE, stderr = subprocess.PIPE) 
+
+def docker_compose_cmd(cmd, verbose = False):
+    params = ["docker", "compose"]
+    cmd_list = cmd.split(' ')
+    if len(cmd_list) == 1: 
+        params.append(cmd)
+    else:
+        params += cmd_list
+    if verbose:
+        return subprocess.Popen(params)
+    return subprocess.Popen(params, stdout = subprocess.PIPE, stderr = subprocess.PIPE) 
+
 def exec_script(name, script):
     params = ["docker", "exec", name, "bash", script]
     process = subprocess.Popen(params, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -101,28 +118,17 @@ def eMBBTraffic():
         if random.randint(0, 1) or (PRIO and time.monotonic() - START > 20):
             exec_cmd(f"client2", "iperf -c 172.20.0.2 -l 12K -b 1M -t 30 -i 1 ")
 
-
-
-def salvar_csv(latency_ms, media_movel_ms):
-    file_exists = os.path.isfile(CSV_FILE)
-    #Abre o arquivo em modo 'append' (adicionar ao final)
-    with open(CSV_FILE, mode='a', newline='') as file:
-        writer = csv.writer(file)
-        if not file_exists:
-            writer.writerow(["latency_ms", "media_movel_ms"])
-
-        writer.writerow([
-            f"{latency_ms:.2f}",
-            f"{media_movel_ms:.2f}"
-        ])
-
 def uRLLCTraffic(r1, r2, r3, r4):
+    metrics_file = open(CSV_FILE, mode='w', newline='')
+    metrics_file.write("latency_ms,media_movel_ms\n")
+    metrics_file.flush()
+    time.sleep(1)
     print("> Iniciando Tráfego uRLLC")
     receiver = exec_cmd("server1", "python3 receiver-socket.py")
     time.sleep(1)
     exec_cmd("client1", "python3 sender-socket.py")
     time.sleep(1)
-    exec_cmd("server1", "python3 publish_to_influxdb.py")
+    start_publishing()
     time.sleep(1)
     global PRIO
     global START
@@ -133,7 +139,8 @@ def uRLLCTraffic(r1, r2, r3, r4):
             if line[0] == '-':
                 average_latency = float(line.split(' ')[-2])
                 latency = float(line.split(' ')[-8])
-                salvar_csv(latency, average_latency)
+                metrics_file.write(f'{latency},{average_latency}\n')
+                metrics_file.flush()
                 if ENABLE:
                     if PRIO == False and average_latency > 5:
                         print("> Inicializando priorização:")
@@ -149,6 +156,7 @@ def clean():
     kill("client1")
     kill("client2")
     kill("server1")
+    docker_compose_cmd("kill", verbose=True)
 
 def sigintHandler(sig, frame):
     clean()
@@ -196,6 +204,7 @@ def run():
         create_container("client1", "client01")
         create_container("client2", "client02")
         create_container("server1", "server01")
+        docker_compose_cmd("up -d")
         time.sleep(1)
         print("> Criando rotas")
         exec_cmd("client1", 'ip route add 192.168.102.0/24 via 172.18.0.3')
